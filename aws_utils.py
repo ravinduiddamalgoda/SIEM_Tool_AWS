@@ -8,6 +8,7 @@ def get_logs(log_group, log_stream):
         logStreamName=log_stream,
         startFromHead=True
     )
+    print(response)
     return response['events']
 
 def get_instance_metrics(instance_id, start_time, end_time, period=300):

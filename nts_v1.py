@@ -86,25 +86,52 @@ def fetch_logs():
     start_date = data.get('start_date')
     end_date = data.get('end_date')
 
-    # Fetch logs using the AWS utility function
-    logs = get_logs(log_group, log_stream)
+    # Convert start_date and end_date to timestamps
+    try:
+        start_time = datetime.strptime(start_date, '%Y-%m-%d')
+        end_time = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
-    # Filter logs by date using the 'timestamp' field directly
-    if start_date and end_date:
-        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
-        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    # Initialize Boto3 client
+    client = boto3.client('logs')
 
-        filtered_logs = []
-        for log in logs:
-            log_timestamp = log['timestamp'] / 1000.0
-            log_time_obj = datetime.utcfromtimestamp(log_timestamp)
+    logs = []
+    try:
+        # First request to fetch log events
+        response = client.get_log_events(
+            logGroupName=log_group,
+            logStreamName=log_stream,
+            startFromHead=True
+        )
+        logs.extend(response.get('events', []))  # Append initial logs
 
-            if start_date_obj <= log_time_obj < end_date_obj:
-                filtered_logs.append(log)
-    else:
-        filtered_logs = logs
+        # Handle pagination using nextForwardToken
+        while 'nextForwardToken' in response:
+            next_token = response['nextForwardToken']
+            response = client.get_log_events(
+                logGroupName=log_group,
+                logStreamName=log_stream,
+                startFromHead=True,
+                nextToken=next_token
+            )
+            # Append new logs
+            logs.extend(response.get('events', []))
 
-    return jsonify(filtered_logs)
+            # Break if there are no more logs to fetch
+            if next_token == response.get('nextForwardToken'):
+                break
+
+        # Filter logs by date
+        filtered_logs = [
+            log for log in logs
+            if start_time <= datetime.utcfromtimestamp(log['timestamp'] / 1000.0) < end_time
+        ]
+
+        return jsonify(filtered_logs)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/detect_brute_force', methods=['POST'])
 def detect_brute_force_route():
@@ -150,19 +177,27 @@ def detect_ddos_route():
         )
         events = response.get('events', [])
         logs.extend(events)
-
+        return jsonify({'logs': response})
+        print(response.get('nextForwardToken'))
         # Handle pagination if there are more logs
-        while 'nextToken' in response:
+        while 'nextForwardToken' in response:
+            next_token = response['nextForwardToken']
             response = client.get_log_events(
                 logGroupName=log_group,
                 logStreamName=log_stream,
-                nextToken=response['nextToken'],
+                nextToken=next_token,
                 startTime=start_time,
                 endTime=end_time,
                 startFromHead=True
             )
             events = response.get('events', [])
             logs.extend(events)
+            print(logs)
+
+            # Break if there are no more logs to fetch
+            if next_token == response.get('nextForwardToken'):
+                break
+        return jsonify({'logs': logs})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

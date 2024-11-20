@@ -26,7 +26,7 @@ def detect_brute_force(logs):
 
     # Identify IPs with more than a threshold of failed attempts
     for ip, count in failed_attempts.items():
-        if count > 10:  # Threshold for brute force detection
+        if count > 25:  # Threshold for brute force detection
             brute_force_ips.append(ip)
 
     return brute_force_ips
@@ -34,6 +34,7 @@ def detect_brute_force(logs):
 # DDoS detection logic with date filtering
 
 def detect_ddos(logs):
+    # print(logs)
     request_counts = defaultdict(int)
     ddos_ips = []
 
@@ -41,7 +42,7 @@ def detect_ddos(logs):
         message = log['message']
         # Extract both source IP and attacked IP
         ips = re.findall(r'[0-9]+(?:\.[0-9]+){3}', message)
-        print(ips)
+        # print(ips)
         if len(ips) >= 2:  # Ensure both source and attacked IPs are available
             attacked_ip = ips[0]  # Attacked IP is the second one in the message
             request_counts[attacked_ip] += 1
